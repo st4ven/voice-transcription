@@ -4,10 +4,9 @@ import AudioRecorder from './AudioRecorder'
 function App() {
 
   return (
-    <>
-      <h1>voice transcription</h1>
+    <div className="min-h-screen bg-[#E9ECEF] p-3">
       <AudioRecorder />
-    </>
+    </div>
   )
 }
 
