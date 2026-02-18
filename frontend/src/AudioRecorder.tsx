@@ -1,11 +1,9 @@
 import { useState, useRef, useEffect } from "react";
 import { API_BASE_URL } from "./config";
 import FileDrop from "./components/FileDrop";
-import { TbMicrophone, TbPlayerRecord, TbWaveSawTool } from "react-icons/tb";
-import { HiPlay, HiStop, HiPause } from "react-icons/hi2";
-import { FaCheck } from "react-icons/fa6";
-import { MdContentCopy, MdDownload } from "react-icons/md";
-
+import { TbMicrophone, TbPlayerPause, TbPlayerRecord, TbRefresh, TbSparkles, TbWaveSawTool } from "react-icons/tb";
+import { HiPlay, HiStop, HiPause, HiOutlineSpeakerWave } from "react-icons/hi2";
+import { MdCheck, MdCompareArrows, MdContentCopy, MdDownload, MdRestore } from "react-icons/md";
 
 const mimeType = 'audio/webm';
 
@@ -25,6 +23,32 @@ const AudioRecorder = () => {
     const recordingTimerRef = useRef<NodeJS.Timeout | null>(null);
     const [recordingTime, setRecordingTime] = useState<number>(0);
     const audioRef = useRef<HTMLAudioElement | null>(null);
+
+    const [cleanedTranscript, setCleanedTranscript] = useState<string | null>(null);
+    const [cleanLoading, setCleanLoading] = useState<boolean>(false);
+
+    const [showComparison, setShowComparison] = useState(false);
+    const [isSpeaking, setIsSpeaking] = useState(false);
+    const [activeTranscript, setActiveTranscript] = useState<'original' | 'cleaned'>('original');
+
+    // Text-to-speech function
+    const speakText = (text: string) => {
+        if ('speechSynthesis' in window) {
+            // Cancel any ongoing speech
+            window.speechSynthesis.cancel();
+
+            const utterance = new SpeechSynthesisUtterance(text);
+            utterance.onend = () => setIsSpeaking(false);
+            utterance.onerror = () => setIsSpeaking(false);
+            window.speechSynthesis.speak(utterance);
+            setIsSpeaking(true);
+        }
+    };
+
+    const stopSpeaking = () => {
+        window.speechSynthesis.cancel();
+        setIsSpeaking(false);
+    };
 
     // Get audio duration when loaded
     useEffect(() => {
@@ -200,6 +224,7 @@ const AudioRecorder = () => {
         }
     };
 
+    // handle file selection from the FileDrop component
     const handleFileSelect = async (file: File) => {
         // get the file extension
         const extension = file.name.split('.').pop()?.toLowerCase();
@@ -246,6 +271,30 @@ const AudioRecorder = () => {
         const mins = Math.floor(seconds / 60);
         const secs = seconds % 60;
         return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+    };
+
+    // Handle cleaning the transcript using the backend API
+    const handleCleanTranscript = async () => {
+        if (!transcript) return;
+
+        setCleanLoading(true);
+
+        try {
+            const response = await fetch(`${API_BASE_URL}/api/clean`, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                },
+                body: JSON.stringify({ text: transcript }),
+            });
+
+            const data = await response.json();
+            setCleanedTranscript(data.cleaned_text);
+        } catch (error) {
+            console.error("Error cleaning transcript:", error);
+        } finally {
+            setCleanLoading(false);
+        }
     };
 
     return (
@@ -382,35 +431,246 @@ const AudioRecorder = () => {
                 )}
 
                 {/* Transcript */}
+                {/* Transcript Section */}
                 {transcript && (
-                    <div className="bg-linear-to-r from-gray-50 to-white rounded-xl border border-gray-200 overflow-hidden">
-                        <div className="flex items-center justify-between p-4 bg-gray-50 border-b border-gray-200">
-                            <h3 className="text-lg font-semibold text-gray-800 flex items-center gap-2">
-                                <TbWaveSawTool size={20} className="text-blue-600" />
-                                Transcript
-                            </h3>
-                            <button
-                                onClick={copyToClipboard}
-                                className="flex items-center gap-2 px-3 py-1.5 text-sm text-gray-600 bg-white rounded-lg hover:bg-gray-100 transition-colors duration-200">
-                                {copySuccess ? (
-                                    <>
-                                        <FaCheck size={14} className="text-green-500" />
-                                        <span className="text-green-500">Copied!</span>
-                                    </>
-                                ) : (
-                                    <>
-                                        <MdContentCopy size={14} className="text-gray-500" />
-                                        <span className="text-gray-500">Copy</span>
-                                    </>
-                                )}
-                            </button>
+                    <div className="space-y-4">
+                        {/* Main Transcript Card */}
+                        <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+                            {/* Header with Tabs */}
+                            <div className="border-b border-gray-200">
+                                <div className="flex items-center justify-between px-4 py-2">
+                                    <div className="flex items-center gap-2">
+                                        <TbWaveSawTool size={20} className="text-blue-600" />
+                                        <h3 className="text-lg font-semibold text-gray-800">Transcript</h3>
+
+                                        {/* View Toggle (if both transcripts exist) */}
+                                        {cleanedTranscript && (
+                                            <div className="ml-4 flex items-center gap-1 bg-gray-100 rounded-lg p-1">
+                                                <button
+                                                    onClick={() => setActiveTranscript('original')}
+                                                    className={`
+                    px-3 py-1 text-sm font-medium rounded-md transition-all
+                    ${activeTranscript === 'original'
+                                                            ? 'bg-white text-gray-800 shadow-sm'
+                                                            : 'text-gray-600 hover:text-gray-800'
+                                                        }
+                  `}
+                                                >
+                                                    Original
+                                                </button>
+                                                <button
+                                                    onClick={() => setActiveTranscript('cleaned')}
+                                                    className={`
+                    px-3 py-1 text-sm font-medium rounded-md transition-all
+                    ${activeTranscript === 'cleaned'
+                                                            ? 'bg-white text-green-700 shadow-sm'
+                                                            : 'text-gray-600 hover:text-gray-800'
+                                                        }
+                  `}
+                                                >
+                                                    <span className="flex items-center gap-1">
+                                                        Cleaned
+                                                        <TbSparkles size={14} className="text-green-500" />
+                                                    </span>
+                                                </button>
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    {/* Action Buttons */}
+                                    <div className="flex items-center gap-2">
+                                        {/* Text-to-Speech Button */}
+                                        <button
+                                            onClick={() => {
+                                                const text = activeTranscript === 'original' ? transcript : cleanedTranscript;
+                                                if (isSpeaking) {
+                                                    stopSpeaking();
+                                                } else {
+                                                    speakText(text || '');
+                                                }
+                                            }}
+                                            className={`
+                flex items-center gap-2 px-3 py-1.5 text-sm rounded-lg transition-all
+                ${isSpeaking
+                                                    ? 'bg-red-50 text-red-600 hover:bg-red-100'
+                                                    : 'bg-gray-50 text-gray-600 hover:bg-gray-100'
+                                                }
+              `}
+                                            title={isSpeaking ? 'Stop speaking' : 'Listen to transcript'}
+                                        >
+                                            {isSpeaking ? (
+                                                <>
+                                                    <TbPlayerPause size={16} />
+                                                    <span>Stop</span>
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <HiOutlineSpeakerWave size={16} />
+                                                    <span>Listen</span>
+                                                </>
+                                            )}
+                                        </button>
+
+                                        {/* Copy Button */}
+                                        <button
+                                            onClick={copyToClipboard}
+                                            className="flex items-center gap-2 px-3 py-1.5 text-sm text-gray-600 bg-gray-50 rounded-lg hover:bg-gray-100 transition-all"
+                                            title="Copy to clipboard"
+                                        >
+                                            {copySuccess ? (
+                                                <>
+                                                    <MdCheck size={16} className="text-green-500" />
+                                                    <span className="text-green-500">Copied!</span>
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <MdContentCopy size={16} className="text-gray-500" />
+                                                    <span>Copy</span>
+                                                </>
+                                            )}
+                                        </button>
+
+                                        {/* Clean Button (only if no cleaned version yet) */}
+                                        {!cleanedTranscript && (
+                                            <button
+                                                onClick={handleCleanTranscript}
+                                                disabled={cleanLoading}
+                                                className="flex items-center gap-2 px-4 py-1.5 text-sm text-white bg-linear-to-r from-blue-500 to-blue-600 rounded-lg hover:from-blue-600 hover:to-blue-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
+                                            >
+                                                {cleanLoading ? (
+                                                    <>
+                                                        <TbRefresh size={16} className="animate-spin" />
+                                                        <span>Cleaning...</span>
+                                                    </>
+                                                ) : (
+                                                    <>
+                                                        <TbSparkles size={16} />
+                                                        <span>Clean Transcript</span>
+                                                    </>
+                                                )}
+                                            </button>
+                                        )}
+
+                                        {/* Compare Button (when both transcripts exist) */}
+                                        {cleanedTranscript && (
+                                            <button
+                                                onClick={() => setShowComparison(!showComparison)}
+                                                className={`
+                  flex items-center gap-2 px-3 py-1.5 text-sm rounded-lg transition-all
+                  ${showComparison
+                                                        ? 'bg-purple-100 text-purple-700'
+                                                        : 'bg-gray-50 text-gray-600 hover:bg-gray-100'
+                                                    }
+                `}
+                                                title="Compare versions"
+                                            >
+                                                <MdCompareArrows size={16} />
+                                                <span>Compare</span>
+                                            </button>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Transcript Content */}
+                            <div className="p-6">
+                                {/* Word Count and Stats */}
+                                <div className="flex items-center gap-4 mb-4 text-sm text-gray-500 border-b border-gray-100 pb-3">
+                                    <div className="flex items-center gap-1">
+                                        <span className="font-medium text-gray-700">
+                                            {activeTranscript === 'original'
+                                                ? transcript.split(/\s+/).length
+                                                : cleanedTranscript?.split(/\s+/).length || 0
+                                            }
+                                        </span>
+                                        <span>words</span>
+                                    </div>
+
+                                    {cleanedTranscript && activeTranscript === 'cleaned' && (
+                                        <div className="flex items-center gap-1 text-green-600 bg-green-50 px-2 py-0.5 rounded-full">
+                                            <TbSparkles size={12} />
+                                            <span className="text-xs font-medium">
+                                                Removed {
+                                                    transcript.split(/\s+/).length - (cleanedTranscript?.split(/\s+/).length || 0)
+                                                } filler words
+                                            </span>
+                                        </div>
+                                    )}
+                                </div>
+
+                                {/* Main Text */}
+                                <div className="relative">
+                                    <p className="text-gray-700 leading-relaxed whitespace-pre-wrap font-light">
+                                        {activeTranscript === 'original' ? transcript : cleanedTranscript}
+                                    </p>
+
+                                    {/* Highlight effect for cleaned words if in comparison mode */}
+                                    {showComparison && activeTranscript === 'original' && (
+                                        <div className="absolute inset-0 pointer-events-none">
+                                            {/* This would require diff logic to highlight removed words */}
+                                            {/* You could add a tooltip explaining what would be removed */}
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
                         </div>
 
-                        <div className="p-4">
-                            <p className="text-gray-700 leading-relaxed whitespace-pre-wrap">
-                                {transcript}
-                            </p>
-                        </div>
+                        {/* Side-by-Side Comparison View */}
+                        {showComparison && cleanedTranscript && (
+                            <div className="grid grid-cols-2 gap-4 mt-4">
+                                {/* Original */}
+                                <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+                                    <div className="bg-gray-50 px-4 py-2 border-b border-gray-200">
+                                        <h4 className="text-sm font-medium text-gray-700 flex items-center gap-2">
+                                            <span className="w-2 h-2 bg-blue-500 rounded-full" />
+                                            Original
+                                        </h4>
+                                    </div>
+                                    <div className="p-4 max-h-60 overflow-y-auto">
+                                        <p className="text-sm text-gray-600 whitespace-pre-wrap">
+                                            {transcript}
+                                        </p>
+                                    </div>
+                                </div>
+
+                                {/* Cleaned */}
+                                <div className="bg-white rounded-xl border border-green-200 overflow-hidden">
+                                    <div className="bg-green-50 px-4 py-2 border-b border-green-200">
+                                        <h4 className="text-sm font-medium text-green-700 flex items-center gap-2">
+                                            <TbSparkles size={14} />
+                                            Cleaned
+                                        </h4>
+                                    </div>
+                                    <div className="p-4 max-h-60 overflow-y-auto">
+                                        <p className="text-sm text-gray-600 whitespace-pre-wrap">
+                                            {cleanedTranscript}
+                                        </p>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Quick Stats Footer */}
+                        {cleanedTranscript && !showComparison && (
+                            <div className="flex items-center justify-between text-sm bg-gray-50 rounded-lg p-3">
+                                <div className="flex items-center gap-4">
+                                    <span className="text-gray-600">
+                                        Original: <span className="font-medium text-gray-800">{transcript.split(/\s+/).length} words</span>
+                                    </span>
+                                    <TbWaveSawTool size={16} className="text-gray-400" />
+                                    <span className="text-gray-600">
+                                        Cleaned: <span className="font-medium text-green-600">{cleanedTranscript.split(/\s+/).length} words</span>
+                                    </span>
+                                </div>
+                                <button
+                                    onClick={() => setActiveTranscript(activeTranscript === 'original' ? 'cleaned' : 'original')}
+                                    className="text-blue-600 hover:text-blue-700 font-medium flex items-center gap-1"
+                                >
+                                    <MdRestore size={14} />
+                                    Show {activeTranscript === 'original' ? 'cleaned' : 'original'}
+                                </button>
+                            </div>
+                        )}
                     </div>
                 )}
             </div>
